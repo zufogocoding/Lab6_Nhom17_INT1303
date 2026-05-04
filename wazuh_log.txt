@@ -1,0 +1,1 @@
+2026/05/04 16:34:51 wazuh-logcollector: INFO: (1950): Analyzing file: '/var/log/suricata/eve.json'.
