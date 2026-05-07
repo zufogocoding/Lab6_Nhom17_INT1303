@@ -1,0 +1,41 @@
+BÁO CÁO KẾT QUẢ THỰC HIỆN LAB: HỆ THỐNG PHÁT HIỆN XÂM NHẬP MẠNG (IDS)
+----------------------------------------------------------------------
+Tên dự án: Real-time Network Intrusion Detection System (IDS) using Machine Learning
+Môi trường thực hiện: Ubuntu 24.04 (VMware), Python 3 (venv)
+
+1. TỔNG QUAN DỰ ÁN
+- Mục tiêu: Xây dựng hệ thống phát hiện xâm nhập thời gian thực dựa trên tập dữ liệu CIC-IDS2017 [cite: 1, 29].
+- Các bước thực hiện chính: Tiền xử lý dữ liệu, Lọc tính năng, Huấn luyện mô hình và Triển khai cảnh báo [cite: 7-14].
+
+2. CHI TIẾT THỰC HIỆN BƯỚC 2.4: FEATURE SELECTION (LỌC TÍNH NĂNG)
+Để tối ưu hóa tốc độ xử lý thời gian thực và hiệu suất mô hình, hệ thống chỉ giữ lại 18 tính năng cốt lõi thay vì 79 tính năng ban đầu [cite: 65, 66].
+
+Danh sách 18 tính năng đã lọc bao gồm [cite: 67-78]:
+- Protocol (Giao thức)
+- Flow Duration (Thời gian luồng)
+- Tot Fwd Pkts / Tot Bwd Pkts (Tổng gói tin đi/về)
+- TotLen Fwd Pkts / TotLen Bwd Pkts (Tổng độ dài gói tin)
+- Fwd Pkt Len Mean / Bwd Pkt Len Mean (Độ dài gói tin trung bình)
+- Flow Byts/s / Flow Pkts/s (Băng thông luồng)
+- Pkt Len Mean / Pkt Len Std (Thống kê độ dài gói tin)
+- Các cờ TCP (Flags): SYN, ACK, FIN, RST, PSH, URG Flag Cnt.
+
+Lý do thực hiện:
+- Giảm tải cho RAM và CPU trên máy ảo [cite: 55, 66].
+- Tập trung vào các đặc trưng quan trọng để nhận diện tấn công (ví dụ: cờ SYN thường xuất hiện trong tấn công DoS) [cite: 30, 74].
+
+3. HUẤN LUYỆN MÔ HÌNH (MỤC 2.5)
+- Thuật toán lựa chọn: Random Forest Classifier [cite: 19, 86].
+- Quy trình:
+  + Chia tập dữ liệu (Train/Test split) [cite: 66].
+  + Huấn luyện mô hình với 100 cây (n_estimators=100).
+  + Đánh giá qua Classification Report (Accuracy, Precision, Recall, F1-score) [cite: 87].
+- Kết quả: Mô hình Random Forest cho kết quả Recall cao đối với các lớp tấn công, giúp giảm thiểu việc bỏ sót mã độc [cite: 88, 89].
+
+4. SẢN PHẨM BÀN GIAO (DELIVERABLES)
+- File dữ liệu đã xử lý: processed_data.csv (chứa 18 tính năng + Label).
+- File mô hình đã huấn luyện: random_forest_model.pkl (sử dụng joblib) [cite: 104].
+- Mã nguồn: Các file .py thực hiện từ bước đọc dữ liệu đến huấn luyện [cite: 101].
+
+5. KẾT LUẬN
+Hệ thống đã hoàn thành việc lọc 18 tính năng quan trọng và huấn luyện thành công mô hình Random Forest, sẵn sàng cho việc tích hợp vào các công cụ giám sát mạng để tạo cảnh báo thời gian thực [cite: 90, 93].
