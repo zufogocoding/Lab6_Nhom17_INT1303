@@ -46,13 +46,17 @@ def load_and_merge_data(raw_data_dir):
 
 
 def clean_data(df):
-    """Strips columns, handles NaN/Inf, and drops duplicates & zero-variance."""
+    """Strips columns, forces numeric types, handles NaN/Inf, and drops duplicates & zero-variance."""
     print("[2/6] Cleaning data...")
     # Strip whitespace from column names
     df.columns = df.columns.str.strip()
 
     # Drop duplicate rows
     df.drop_duplicates(inplace=True)
+
+    # Ép kiểu tất cả các cột (trừ Label) về dạng số. Các giá trị string lỗi sẽ bị biến thành NaN
+    cols_to_numeric = [col for col in df.columns if col != "Label"]
+    df[cols_to_numeric] = df[cols_to_numeric].apply(pd.to_numeric, errors="coerce")
 
     # Replace Infinity with NaN, then fill NaN with the median of each column
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
@@ -73,17 +77,24 @@ def reduce_mem_usage(df):
     start_mem = df.memory_usage().sum() / 1024**2
 
     for col in df.columns:
-        col_type = df[col].dtype
-        if col_type != object:
+        # Chỉ xử lý các cột có kiểu dữ liệu là số hợp lệ
+        if is_numeric_dtype(df[col]):
             c_min, c_max = df[col].min(), df[col].max()
-            if str(col_type)[:3] == "int":
+
+            # Bỏ qua nếu cột bị rỗng hoàn toàn (NaN)
+            if pd.isna(c_min) or pd.isna(c_max):
+                continue
+
+            col_type = str(df[col].dtype)
+
+            if "int" in col_type:
                 if c_min > np.iinfo(np.int8).min and c_max < np.iinfo(np.int8).max:
                     df[col] = df[col].astype(np.int8)
                 elif c_min > np.iinfo(np.int16).min and c_max < np.iinfo(np.int16).max:
                     df[col] = df[col].astype(np.int16)
                 elif c_min > np.iinfo(np.int32).min and c_max < np.iinfo(np.int32).max:
                     df[col] = df[col].astype(np.int32)
-            else:
+            elif "float" in col_type:
                 if (
                     c_min > np.finfo(np.float32).min
                     and c_max < np.finfo(np.float32).max
