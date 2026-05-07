@@ -8,6 +8,7 @@ from imblearn.over_sampling import SMOTE
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.pipeline import Pipeline
 import joblib
+from pandas.api.types import is_numeric_dtype  # Dòng import vừa được thêm
 
 # Define the 18 core features required by the lab
 SELECTED_FEATURES = [
@@ -46,20 +47,41 @@ def load_and_merge_data(raw_data_dir):
 
 
 def clean_data(df):
-    """Strips columns, handles NaN/Inf, and drops duplicates & zero-variance."""
+    """Strips columns, forces numeric types, handles NaN/Inf, and drops duplicates & zero-variance."""
     print("[2/6] Cleaning data...")
-    # Strip whitespace from column names
+    # Xóa khoảng trắng thừa ở tên cột
     df.columns = df.columns.str.strip()
 
-    # Drop duplicate rows
+    # Đổi tên các cột gốc từ Kaggle sang định dạng viết tắt theo đúng yêu cầu Lab PDF
+    rename_map = {
+        "Total Fwd Packets": "Tot Fwd Pkts",
+        "Total Backward Packets": "Tot Bwd Pkts",
+        "Total Length of Fwd Packets": "TotLen Fwd Pkts",
+        "Total Length of Bwd Packets": "TotLen Bwd Pkts",
+        "Fwd Packet Length Mean": "Fwd Pkt Len Mean",
+        "Bwd Packet Length Mean": "Bwd Pkt Len Mean",
+        "Flow Bytes/s": "Flow Byts/s",
+        "Flow Packets/s": "Flow Pkts/s",
+        "Packet Length Mean": "Pkt Len Mean",
+        "Packet Length Std": "Pkt Len Std",
+        "FIN Flag Count": "FIN Flag Cnt",
+        "SYN Flag Count": "SYN Flag Cnt",
+        "RST Flag Count": "RST Flag Cnt",
+        "PSH Flag Count": "PSH Flag Cnt",
+        "ACK Flag Count": "ACK Flag Cnt",
+        "URG Flag Count": "URG Flag Cnt",
+    }
+    df.rename(columns=rename_map, inplace=True)
+
     df.drop_duplicates(inplace=True)
 
-    # Replace Infinity with NaN, then fill NaN with the median of each column
+    cols_to_numeric = [col for col in df.columns if col != "Label"]
+    df[cols_to_numeric] = df[cols_to_numeric].apply(pd.to_numeric, errors="coerce")
+
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
 
-    # Drop zero-variance features (columns where all values are the same)
     variances = df[numeric_cols].var()
     zero_var_cols = variances[variances == 0].index
     df.drop(columns=zero_var_cols, inplace=True)
@@ -73,17 +95,22 @@ def reduce_mem_usage(df):
     start_mem = df.memory_usage().sum() / 1024**2
 
     for col in df.columns:
-        col_type = df[col].dtype
-        if col_type != object:
+        if is_numeric_dtype(df[col]):
             c_min, c_max = df[col].min(), df[col].max()
-            if str(col_type)[:3] == "int":
+
+            if pd.isna(c_min) or pd.isna(c_max):
+                continue
+
+            col_type = str(df[col].dtype)
+
+            if "int" in col_type:
                 if c_min > np.iinfo(np.int8).min and c_max < np.iinfo(np.int8).max:
                     df[col] = df[col].astype(np.int8)
                 elif c_min > np.iinfo(np.int16).min and c_max < np.iinfo(np.int16).max:
                     df[col] = df[col].astype(np.int16)
                 elif c_min > np.iinfo(np.int32).min and c_max < np.iinfo(np.int32).max:
                     df[col] = df[col].astype(np.int32)
-            else:
+            elif "float" in col_type:
                 if (
                     c_min > np.finfo(np.float32).min
                     and c_max < np.finfo(np.float32).max
@@ -98,14 +125,21 @@ def reduce_mem_usage(df):
 def filter_features(df):
     """Filters dataset to keep only the 18 selected features and the Label."""
     print("[4/6] Filtering features...")
-    # Ensure 'Label' is kept alongside selected features
+
+    global SELECTED_FEATURES
     features_to_keep = SELECTED_FEATURES + ["Label"]
-    # Check if all selected features exist in the dataframe
+
+    # Chỉ giữ lại những cột thực sự tồn tại trong DataFrame
+    available_cols = [col for col in features_to_keep if col in df.columns]
+
     missing_cols = [col for col in features_to_keep if col not in df.columns]
     if missing_cols:
-        raise KeyError(f"Missing columns in dataset: {missing_cols}")
+        print(f"  -> Lưu ý: Dataset trên Kaggle không chứa các cột: {missing_cols}")
 
-    return df[features_to_keep]
+    # Cập nhật mảng biến môi trường để quá trình lưu .csv ở bước 6 không bị lỗi
+    SELECTED_FEATURES = [col for col in available_cols if col != "Label"]
+
+    return df[available_cols]
 
 
 def preprocess_and_balance(df, output_dir):
@@ -116,28 +150,21 @@ def preprocess_and_balance(df, output_dir):
     le = LabelEncoder()
     df["Label"] = le.fit_transform(df["Label"])
 
-    # Save the encoder so we can decode predictions later in real-time deployment
-    os.makedirs("models", exist_ok=True)
-    joblib.dump(le, "models/label_encoder.pkl")
+    os.makedirs("../models", exist_ok=True)
+    joblib.dump(le, "../models/label_encoder.pkl")
 
     X = df.drop(columns=["Label"])
     y = df["Label"]
 
-    # 🚨 CRITICAL: Split BEFORE SMOTE to prevent data leakage!
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    # Scale Features
     scaler = StandardScaler()
     X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(
-        X_test
-    )  # Only transform test data based on train data
-    joblib.dump(scaler, "models/scaler.pkl")  # Save scaler for real-time
+    X_test_scaled = scaler.transform(X_test)
+    joblib.dump(scaler, "../models/scaler.pkl")
 
-    # Balance Data (Pipeline: SMOTE -> RandomUnderSampler)
-    # Note: Adjust sampling_strategy ratios depending on your exact dataset size to avoid OOM
     print("Applying SMOTE and RandomUnderSampler to Training Data...")
     resample_pipeline = Pipeline(
         [
@@ -150,11 +177,9 @@ def preprocess_and_balance(df, output_dir):
         X_train_scaled, y_train
     )
 
-    # Save processed data
     print("[6/6] Saving processed datasets...")
     os.makedirs(output_dir, exist_ok=True)
 
-    # Convert back to DataFrame to save easily
     train_df = pd.DataFrame(X_train_balanced, columns=SELECTED_FEATURES)
     train_df["Label"] = y_train_balanced
     train_df.to_csv(os.path.join(output_dir, "train_processed.csv"), index=False)
@@ -166,12 +191,10 @@ def preprocess_and_balance(df, output_dir):
 
 
 if __name__ == "__main__":
-    # Define your paths
-    RAW_DATA_DIR = "../data/raw"  # Put your 8 CSVs here
-    PROCESSED_DATA_DIR = "../data/processed"  # Output folder
+    RAW_DATA_DIR = "../data/raw"
+    PROCESSED_DATA_DIR = "../data/processed"
 
     try:
-        # Pipeline execution
         raw_df = load_and_merge_data(RAW_DATA_DIR)
         clean_df = clean_data(raw_df)
         optimized_df = reduce_mem_usage(clean_df)
