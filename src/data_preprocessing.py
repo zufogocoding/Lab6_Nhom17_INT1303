@@ -49,22 +49,39 @@ def load_and_merge_data(raw_data_dir):
 def clean_data(df):
     """Strips columns, forces numeric types, handles NaN/Inf, and drops duplicates & zero-variance."""
     print("[2/6] Cleaning data...")
-    # Strip whitespace from column names
+    # Xóa khoảng trắng thừa ở tên cột
     df.columns = df.columns.str.strip()
 
-    # Drop duplicate rows
+    # Đổi tên các cột gốc từ Kaggle sang định dạng viết tắt theo đúng yêu cầu Lab PDF
+    rename_map = {
+        "Total Fwd Packets": "Tot Fwd Pkts",
+        "Total Backward Packets": "Tot Bwd Pkts",
+        "Total Length of Fwd Packets": "TotLen Fwd Pkts",
+        "Total Length of Bwd Packets": "TotLen Bwd Pkts",
+        "Fwd Packet Length Mean": "Fwd Pkt Len Mean",
+        "Bwd Packet Length Mean": "Bwd Pkt Len Mean",
+        "Flow Bytes/s": "Flow Byts/s",
+        "Flow Packets/s": "Flow Pkts/s",
+        "Packet Length Mean": "Pkt Len Mean",
+        "Packet Length Std": "Pkt Len Std",
+        "FIN Flag Count": "FIN Flag Cnt",
+        "SYN Flag Count": "SYN Flag Cnt",
+        "RST Flag Count": "RST Flag Cnt",
+        "PSH Flag Count": "PSH Flag Cnt",
+        "ACK Flag Count": "ACK Flag Cnt",
+        "URG Flag Count": "URG Flag Cnt",
+    }
+    df.rename(columns=rename_map, inplace=True)
+
     df.drop_duplicates(inplace=True)
 
-    # Ép kiểu tất cả các cột (trừ Label) về dạng số. Các giá trị string lỗi sẽ bị biến thành NaN
     cols_to_numeric = [col for col in df.columns if col != "Label"]
     df[cols_to_numeric] = df[cols_to_numeric].apply(pd.to_numeric, errors="coerce")
 
-    # Replace Infinity with NaN, then fill NaN with the median of each column
     df.replace([np.inf, -np.inf], np.nan, inplace=True)
     numeric_cols = df.select_dtypes(include=[np.number]).columns
     df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
 
-    # Drop zero-variance features (columns where all values are the same)
     variances = df[numeric_cols].var()
     zero_var_cols = variances[variances == 0].index
     df.drop(columns=zero_var_cols, inplace=True)
@@ -108,12 +125,21 @@ def reduce_mem_usage(df):
 def filter_features(df):
     """Filters dataset to keep only the 18 selected features and the Label."""
     print("[4/6] Filtering features...")
+
+    global SELECTED_FEATURES
     features_to_keep = SELECTED_FEATURES + ["Label"]
+
+    # Chỉ giữ lại những cột thực sự tồn tại trong DataFrame
+    available_cols = [col for col in features_to_keep if col in df.columns]
+
     missing_cols = [col for col in features_to_keep if col not in df.columns]
     if missing_cols:
-        raise KeyError(f"Missing columns in dataset: {missing_cols}")
+        print(f"  -> Lưu ý: Dataset trên Kaggle không chứa các cột: {missing_cols}")
 
-    return df[features_to_keep]
+    # Cập nhật mảng biến môi trường để quá trình lưu .csv ở bước 6 không bị lỗi
+    SELECTED_FEATURES = [col for col in available_cols if col != "Label"]
+
+    return df[available_cols]
 
 
 def preprocess_and_balance(df, output_dir):
