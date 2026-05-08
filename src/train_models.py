@@ -7,7 +7,8 @@ from sklearn.metrics import classification_report, confusion_matrix
 
 # Import the 5 required models
 from sklearn.linear_model import LogisticRegression
-from sklearn.svm import SVC
+from sklearn.linear_model import SGDClassifier
+from sklearn.svm import LinearSVC  # Thay đổi: Dùng LinearSVC thay vì SVC tốn RAM
 from sklearn.naive_bayes import GaussianNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.ensemble import RandomForestClassifier
@@ -24,7 +25,10 @@ def load_processed_data(processed_data_dir):
             "Processed data not found. Please run data_preprocessing.py first."
         )
 
-    train_df = pd.read_csv(train_path)
+    # TỐI ƯU RAM 1: Trích xuất ngẫu nhiên 15% tập train để học, tránh tràn RAM
+    train_df = pd.read_csv(train_path).sample(frac=0.15, random_state=42)
+
+    # Tập test giữ nguyên 100% để đảm bảo kết quả đánh giá khách quan
     test_df = pd.read_csv(test_path)
 
     X_train = train_df.drop(columns=["Label"])
@@ -43,7 +47,9 @@ def load_processed_data(processed_data_dir):
 def evaluate_and_plot(y_test, y_pred, model_name, class_names):
     """Prints the classification report and plots a confusion matrix."""
     print(f"\n--- Evaluation Report: {model_name} ---")
-    print(classification_report(y_test, y_pred, target_names=class_names))
+    print(
+        classification_report(y_test, y_pred, target_names=class_names, zero_division=0)
+    )
 
     # Plot Confusion Matrix
     cm = confusion_matrix(y_test, y_pred)
@@ -63,22 +69,23 @@ def evaluate_and_plot(y_test, y_pred, model_name, class_names):
     # Save the plot to the visuals folder
     os.makedirs("../visuals", exist_ok=True)
     plt.savefig(f"../visuals/cm_{model_name.replace(' ', '_')}.png")
-    plt.close()  # Close plot to prevent overlap in the loop
+    plt.close()
 
 
 def train_and_evaluate(X_train, y_train, X_test, y_test, class_names):
     """Trains all 5 models, evaluates them, and returns the trained Random Forest."""
     print("[2/4] Initializing models...")
 
-    # Define models in a dictionary to easily loop through them
+    # TỐI ƯU RAM 2: Cấu hình giới hạn vòng lặp (max_iter) và tận dụng đa luồng (n_jobs=-1)
     models = {
-        "Logistic Regression": LogisticRegression(max_iter=1000, random_state=42),
+        "Logistic Regression": LogisticRegression(
+            max_iter=200, n_jobs=-1, random_state=42
+        ),
         "Naive Bayes": GaussianNB(),
-        "KNN": KNeighborsClassifier(n_neighbors=5),
-        # SVC can be slow on large datasets, adding parameters to speed it up if needed
-        "SVM": SVC(kernel="rbf", random_state=42),
+        "KNN": KNeighborsClassifier(n_neighbors=5, n_jobs=-1),
+        "SVM": SGDClassifier(loss="hinge", random_state=42, n_jobs=-1, max_iter=1000),
         "Random Forest": RandomForestClassifier(
-            n_estimators=100, random_state=42, n_jobs=-1
+            n_estimators=50, random_state=42, n_jobs=-1
         ),
     }
 
